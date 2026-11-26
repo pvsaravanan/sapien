@@ -9,7 +9,7 @@ const W = 120;
 const H = 42;
 
 /** Boxed dependency tree with right-angle connectors; the current step is highlighted. */
-export function PlanMap({ plan, current, visited }: { plan: Plan; current: string | null; visited: Set<string> }) {
+export function PlanMap({ plan, current, visited, past }: { plan: Plan; current: string | null; visited: Set<string>; past?: boolean }) {
   const [hover, setHover] = useState<string | null>(null);
   const { nodes, width, height } = layoutPlan(plan, W + 16, H + 34);
   const pos = new Map(nodes.map((n) => [n.id, n]));
@@ -81,7 +81,7 @@ export function PlanMap({ plan, current, visited }: { plan: Plan; current: strin
       </svg>
       {shown?.summary && (
         <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--line)" }}>
-          <div className="label !text-[0.62rem]">{hover ? "Step" : "Now"}</div>
+          <div className="label !text-[0.62rem]">{hover ? "Step" : past ? "Where you were" : "Now"}</div>
           <div className="heading mt-1 !text-[0.78rem]">{shown.title}</div>
           <Markdown className="md-tight mt-1 !text-[0.88rem] !leading-snug" >{shown.summary}</Markdown>
         </div>

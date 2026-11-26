@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { planStatus } from "@/src/core/plan";
+import { planStatus, planVersions, versionStatus } from "@/src/core/plan";
 import { activeProblem, pendingQuestion } from "@/src/core/transcript";
 import type { AgentRole, Answer, Attachment, Effort, Job, ModelAlias, ProviderId, Session, SessionEvent, Settings } from "@/src/core/types";
 import { api } from "./api";
@@ -46,6 +46,8 @@ export function SessionView({ id }: { id: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const router = useRouter();
   const [planOpen, setPlanOpen] = useState(true);
+  /** Map version being viewed; null follows the current map. */
+  const [mapVersion, setMapVersion] = useState<number | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastCount = useRef(0);
@@ -109,6 +111,23 @@ export function SessionView({ id }: { id: string }) {
   const pending = pendingQuestion(s);
   const problem = activeProblem(s);
   const status = planStatus(s.events);
+  const versions = planVersions(s.events);
+  const latest = versions.length;
+  const viewing = mapVersion !== null && mapVersion < latest ? versions[mapVersion - 1] : null;
+  const shownPlan = viewing?.plan ?? s.plan;
+  const shownStatus = viewing ? versionStatus(s.events, viewing) : status;
+  const showMap = (v: number, reveal = false) => {
+    setPlanOpen(true);
+    setMapVersion(v >= latest ? null : v);
+    if (!reveal) return;
+    // On wide screens the map sits in the sticky column and is already visible;
+    // on narrow screens it is below the lesson, so bring it into view.
+    requestAnimationFrame(() => {
+      const el = document.getElementById("lesson-map");
+      const r = el?.getBoundingClientRect();
+      if (el && r && (r.top < 0 || r.bottom > window.innerHeight)) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
   const lastProblem = [...s.events].reverse().find((e) => e.type === "problem");
   const awaitingNext =
     s.kind === "practice" && !problem && !!lastProblem && !s.events.slice(s.events.indexOf(lastProblem)).some((e) => e.type === "next_problem");
@@ -163,6 +182,7 @@ export function SessionView({ id }: { id: string }) {
                 interactive={canInput && pending?.id === e.id}
                 submitDisabled={delivering}
                 onAnswer={(answer) => send({ type: "answer", eventId: e.id, answer })}
+                onViewMap={(v) => showMap(v, true)}
               />
             </div>
           ))}
@@ -212,14 +232,28 @@ export function SessionView({ id }: { id: string }) {
 
         {((s.plan && planOpen) || files.length > 0) && (
           <aside className="space-y-6 lg:sticky lg:top-24 lg:self-start">
-            {s.plan && planOpen && (
-              <div className="card-lift">
-                <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: "var(--line-strong)" }}>
-                  <span className="label">Lesson map</span>
-                  <span className="label-muted text-[0.62rem]">v{s.plan.version}</span>
+            {shownPlan && planOpen && (
+              <div id="lesson-map" className="card-lift scroll-mt-24">
+                <div className="flex items-center justify-between gap-3 border-b px-4 py-3" style={{ borderColor: "var(--line-strong)" }}>
+                  <span className="label">{viewing ? "Earlier map" : "Lesson map"}</span>
+                  {latest > 1 ? (
+                    <div className="map-versions ui" role="group" aria-label="Lesson map versions">
+                      <button type="button" aria-label="Previous map" disabled={(mapVersion ?? latest) <= 1} onClick={() => showMap((mapVersion ?? latest) - 1)}><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M6.5 2 3.5 5l3 3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="square" /></svg></button>
+                      <span aria-live="polite">v{mapVersion ?? latest} / {latest}</span>
+                      <button type="button" aria-label="Next map" disabled={mapVersion === null} onClick={() => showMap((mapVersion ?? latest) + 1)}><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2l3 3-3 3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="square" /></svg></button>
+                    </div>
+                  ) : (
+                    <span className="label-muted text-[0.62rem]">v{shownPlan.version}</span>
+                  )}
                 </div>
+                {viewing && (
+                  <div className="map-past ui">
+                    <span>Replaced by v{(mapVersion ?? 0) + 1}. Ticks show where you'd got to.</span>
+                    <button type="button" onClick={() => setMapVersion(null)}>Back to current</button>
+                  </div>
+                )}
                 <div className="scroll-thin max-h-[52vh] overflow-y-auto p-4">
-                  <PlanMap plan={s.plan} current={status.current} visited={status.visited} />
+                  <PlanMap key={mapVersion ?? "current"} plan={shownPlan} current={shownStatus.current} visited={shownStatus.visited} past={!!viewing} />
                 </div>
               </div>
             )}
@@ -361,6 +395,7 @@ function EventItem({
   interactive,
   submitDisabled,
   onAnswer,
+  onViewMap,
 }: {
   e: SessionEvent;
   session: Session;
@@ -369,6 +404,7 @@ function EventItem({
   interactive: boolean;
   submitDisabled: boolean;
   onAnswer: (a: Answer) => void;
+  onViewMap: (version: number) => void;
 }) {
   switch (e.type) {
     case "learner_message":
@@ -399,7 +435,14 @@ function EventItem({
     case "plan":
       // The replan reason is the teacher's brief to the planner, not learner-facing;
       // the planner's intro message explains the change to the learner.
-      return <Divider>{e.plan.version > 1 ? "lesson map redrawn" : "lesson map drawn"}</Divider>;
+      return (
+        <Divider>
+          {e.plan.version > 1 ? "lesson map redrawn" : "lesson map drawn"}
+          <button type="button" className="divider-link" onClick={() => onViewMap(e.plan.version)} title={`Show lesson map v${e.plan.version}`}>
+            view map
+          </button>
+        </Divider>
+      );
     case "job": {
       const job = jobs.find((j) => j.id === e.jobId);
       return job ? <JobCard job={job} /> : null;

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ProviderId, Settings } from "../core/types";
-import { claudeCliEngine, type Engine, EngineError, type EngineRequest, type EngineResult } from "./engine";
+import { claudeCliEngine, type Engine, EngineError, type EngineRequest, type EngineResult, plainPrompt } from "./engine";
 import type { ContentBlock } from "./files";
 import { DATA_DIR } from "./store";
 
@@ -312,7 +312,7 @@ function composePrompt(req: EngineRequest, filesText: string, schemaInPrompt: bo
   return [
     `SYSTEM INSTRUCTIONS (follow these exactly; they define your role):\n${req.system}`,
     filesText ? `LEARNER FILES\n${filesText}` : "",
-    req.prompt,
+    plainPrompt(req.prompt),
     schemaInPrompt
       ? `RESPONSE FORMAT\nReply with ONLY one JSON object that matches this JSON Schema: no prose before or after it and no code fences. Every property listed must be present; use null where a field does not apply.\n${JSON.stringify(req.schema)}`
       : "Your final reply is the JSON object described by the output schema.",

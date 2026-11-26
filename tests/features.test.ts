@@ -93,7 +93,7 @@ test("files: upload sniffing, content blocks, and transcript attribution", async
 });
 
 test("delivery: a result arriving during an open question wakes the teacher for a note", async () => {
-  scripts["PROBER"] = [() => ({ message: "", action: "finish", states: { current: "c", goal: "g" } })];
+  scripts["PROBER"] = [() => ({ message: "", action: "finish", states: { current: "c", goal: "g", currentBrief: "You know c.", goalBrief: "You will see g." } })];
   scripts["PLANNER"] = [() => ({ nodes: [{ id: "a", title: "A", summary: "s" }], edges: [], intro: "Plan." })];
   scripts["TEACHER"] = [
     () => ({
@@ -121,7 +121,7 @@ test("delivery: a result arriving during an open question wakes the teacher for 
   // The visual finishes while the learner is still answering; teacher may only note.
   scripts["TEACHER"] = [
     (req) => {
-      assert.match(req.prompt, /\[NEW · visual "Diagram"/);
+      assert.match(req.prompt, /NEW SINCE YOUR LAST TURN[^\n]*visual "Diagram"/);
       return { message: "The diagram shows the idea from step one.", action: "check_choice", question: "new?", options: ["a", "b"], correct: [0], explanation: "a.", optionNotes: ["Right.", "Mistake."], role: "check", nodeId: "a" };
     },
     () => ({ message: "The diagram shows the idea from step one.", action: "note" }),

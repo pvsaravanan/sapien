@@ -45,7 +45,7 @@ after(() => fs.rmSync(dir, { recursive: true, force: true }));
 test("teach flow: probe → plan → teach (with retry on invalid output) → grade → complete → extract", async () => {
   scripts["PROBER"] = [
     { message: "Let's see where you are.", action: "probe_choice", question: "What is $2+2$?", options: ["3", "4", "5"], correct: [1], explanation: "Basic addition.", optionNotes: ["Off by one.", "2 + 2 = 4.", "Off by one."] },
-    { message: "Thanks — I have what I need.", action: "finish", states: { current: "Knows addition.", goal: "Understand multiplication as repeated addition." } },
+    { message: "Thanks — I have what I need.", action: "finish", states: { current: "Knows addition.", goal: "Understand multiplication as repeated addition.", currentBrief: "You can add.", goalBrief: "Multiplication will feel like repeated addition." } },
   ];
   scripts["PLANNER"] = [
     { nodes: [{ id: "repeated-addition", title: "Repeated addition", summary: "s" }, { id: "multiplication", title: "Multiplication", summary: "s" }], edges: [{ from: "repeated-addition", to: "multiplication" }], intro: "We go from addition to multiplication." },

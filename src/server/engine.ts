@@ -25,7 +25,38 @@ export interface EngineRequest {
 
 export interface EngineResult {
   output: unknown;
-  usage: { inputTokens: number; outputTokens: number; costUsd: number };
+  /** inputTokens includes cache reads and writes; the split is reported where known. */
+  usage: { inputTokens: number; outputTokens: number; costUsd: number; cacheReadTokens?: number; cacheWriteTokens?: number };
+}
+
+// ─── prompt blocks and cache points ─────────────────────────────────────────
+// Each call is stateless, so the whole lesson is re-sent every turn. Prompts mark
+// block boundaries, and one cache point after the part that only grows by
+// appending (the stable head and the transcript). Claude Code receives these as
+// separate content blocks with a cache breakpoint, so the next call reads that
+// prefix from the prompt cache instead of paying for it again. Other CLIs get the
+// plain text.
+
+/** Starts a new content block. */
+export const BLOCK = "\u0001";
+/** Marks the end of the block before it as a cache breakpoint. */
+export const CACHE_POINT = "\u0002";
+
+export function promptBlocks(prompt: string): { text: string; cache: boolean }[] {
+  const out: { text: string; cache: boolean }[] = [];
+  for (const raw of prompt.split(BLOCK)) {
+    const cache = raw.endsWith(CACHE_POINT);
+    const text = raw.replaceAll(CACHE_POINT, "");
+    if (text.trim()) out.push({ text, cache });
+    else if (cache && out.length) out[out.length - 1].cache = true;
+  }
+  // The API allows a handful of breakpoints; keep only the last one we set.
+  const last = out.map((b) => b.cache).lastIndexOf(true);
+  return out.map((b, i) => ({ ...b, cache: i === last }));
+}
+
+export function plainPrompt(prompt: string): string {
+  return prompt.replaceAll(CACHE_POINT, "").replaceAll(BLOCK, "");
 }
 
 export type Engine = (req: EngineRequest) => Promise<EngineResult>;
@@ -174,13 +205,22 @@ export function claudeCliEngine(claudePath: string): Engine {
               inputTokens: (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
               outputTokens: u.output_tokens ?? 0,
               costUsd: parsed.total_cost_usd ?? 0,
+              cacheReadTokens: u.cache_read_input_tokens ?? 0,
+              cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
             },
           });
         }),
       );
       const message = {
         type: "user",
-        message: { role: "user", content: [...(req.files ?? []), { type: "text", text: req.prompt }] },
+        message: {
+          role: "user",
+          content: [
+            ...(req.files ?? []),
+            // A one-hour TTL: the CLI's own breakpoints use it, and a shorter one may not precede them.
+            ...promptBlocks(req.prompt).map((b) => ({ type: "text", text: b.text, ...(b.cache ? { cache_control: { type: "ephemeral", ttl: "1h" } } : {}) })),
+          ],
+        },
       };
       child.stdin.on("error", () => {});
       child.stdin.end(JSON.stringify(message) + "\n");

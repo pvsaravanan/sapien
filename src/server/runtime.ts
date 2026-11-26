@@ -1,9 +1,26 @@
+import fs from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 import { heal } from "../core/heal";
 import type { AgentRole, ModelAlias, Settings, Usage } from "../core/types";
 import { type Engine, EngineError } from "./engine";
 import { engineFor as providerEngine, modelFor } from "./providers";
 import type { ContentBlock } from "./files";
+import { DATA_DIR } from "./store";
+
+/** One line per model call in data/logs/usage.jsonl, so token use can be audited:
+ *  which role, which model, whether it was a corrective retry, and how much of the
+ *  input came from the prompt cache. Best effort; never breaks a call. */
+function logUsage(entry: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "test") return;
+  try {
+    const dir = path.join(DATA_DIR, "logs");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, "usage.jsonl"), JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n");
+  } catch {
+    /* logging is optional */
+  }
+}
 
 const g = globalThis as unknown as { __sapienEngine?: Engine | null };
 
@@ -141,6 +158,17 @@ async function runAgentOnce<T>(call: AgentCall<T>, model: string | undefined): P
       onPartial: call.onPartial,
     });
     addUsage(call.usage, result.usage);
+    logUsage({
+      role: call.role,
+      provider: call.settings.provider,
+      model: model ?? "default",
+      attempt: attempt + 1,
+      inputTokens: result.usage.inputTokens,
+      cacheReadTokens: result.usage.cacheReadTokens,
+      cacheWriteTokens: result.usage.cacheWriteTokens,
+      outputTokens: result.usage.outputTokens,
+      costUsd: result.usage.costUsd,
+    });
     const parsed = call.schema.safeParse(heal(result.output));
     lastProblems = parsed.success
       ? (call.check?.(parsed.data) ?? [])

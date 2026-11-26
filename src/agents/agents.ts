@@ -5,6 +5,7 @@ import { planProblems } from "../core/plan";
 import { sanitizeSvg } from "../core/sanitize";
 import type { DemoResult, Graph, JobKind, Plan, Proposition, ResearchResult, Session, Settings, Usage, VisualResult } from "../core/types";
 import type { ContentBlock } from "../server/files";
+import { BLOCK, CACHE_POINT } from "../server/engine";
 import { runAgent } from "../server/runtime";
 import { gatherSources } from "../server/research";
 import { PROVIDERS } from "../core/provider-info";
@@ -150,7 +151,8 @@ export function runProber(ctx: Ctx, prompt: string, opts: { delivery?: DeliveryM
       if (v.action === "probe_choice") return questionProblems("choice", v);
       if (v.action === "probe_recall") return questionProblems("recall", v);
       if (v.action === "ask") return v.question?.trim() ? [] : ["question is required for ask."];
-      return v.states?.current.trim() && v.states.goal.trim() ? [] : ["states.current and states.goal are required to finish."];
+      if (!v.states?.current.trim() || !v.states.goal.trim()) return ["states.current and states.goal are required to finish."];
+      return v.states.currentBrief?.trim() && v.states.goalBrief?.trim() ? [] : ["states.currentBrief and states.goalBrief (one sentence each, to the learner) are required to finish."];
     },
   });
 }
@@ -420,7 +422,8 @@ export function runHelper(ctx: Ctx, lesson: string, thread: string, question: st
     system: P.HELPER,
     schema: helperSchema,
     ...ctx,
-    prompt: `THE LESSON SO FAR (quoted document):\n"""\n${lesson}\n"""\n\n${thread ? `EARLIER SIDE EXCHANGES:\n${thread}\n\n` : ""}LEARNER'S SIDE QUESTION:\n${question}`,
+    // Cache point after the lesson: follow-up side questions re-use it.
+    prompt: `THE LESSON SO FAR (quoted document):\n"""\n${lesson}\n"""${CACHE_POINT}${BLOCK}\n\n${thread ? `EARLIER SIDE EXCHANGES:\n${thread}\n\n` : ""}LEARNER'S SIDE QUESTION:\n${question}`,
   });
 }
 

@@ -45,7 +45,7 @@ import type {
   ModelAlias,
   Effort,
 } from "../core/types";
-import { withWorkerSlot } from "./engine";
+import { BLOCK, CACHE_POINT, withWorkerSlot } from "./engine";
 import { maybeExtract } from "./extraction";
 import { fileBlocks, filesFor, getFile } from "./files";
 import { toFigure, type FigureDraft, type FileView } from "../core/figure";
@@ -708,7 +708,7 @@ function practiceInstruction(active: boolean, awaitingNext: boolean) {
 }
 
 const DELIVERY_INSTRUCTION =
-  "A background result marked [NEW] has just arrived. You were called only for that. If it adds something the learner should notice now (or corrects something said earlier), use action note with one to three sentences. Otherwise use action none.";
+  "A background result has just arrived (listed under NEW SINCE YOUR LAST TURN). You were called only for that. If it adds something the learner should notice now (or corrects something said earlier), use action note with one to three sentences. Otherwise use action none.";
 
 const TRANSCRIPT_LIMIT = 250_000;
 
@@ -726,13 +726,13 @@ export function buildContext(s: Session, settings: Settings, instruction: string
   const jobs = listJobs(s.id);
   const parts: string[] = [sessionTopicHeader(s)];
   if (s.states) parts.push(`KNOWLEDGE STATES (from the probe)\nCurrent: ${s.states.current}\nGoal: ${s.states.goal}`);
+  // Everything up to the end of the transcript only changes by appending, so it can be
+  // read from the prompt cache on the next call. Per-turn state (progress, new results,
+  // side questions, the task) goes after the cache point.
   if (s.plan) {
-    const st = planStatus(s.events);
     parts.push(
-      `CURRENT PLAN (v${s.plan.version})\n` +
-        s.plan.nodes
-          .map((n) => `- ${n.id}${st.current === n.id ? " [CURRENT]" : st.visited.has(n.id) ? " [visited]" : ""}: ${n.title} — ${n.summary ?? ""}`)
-          .join("\n") +
+      `CURRENT PLAN (v${s.plan.version}; progress is listed at the end)\n` +
+        s.plan.nodes.map((n) => `- ${n.id}: ${n.title} — ${n.summary ?? ""}`).join("\n") +
         `\nPrerequisite edges: ${s.plan.edges.map((e) => `${e.from}→${e.to}`).join(", ") || "none"}`,
     );
   }
@@ -759,19 +759,42 @@ export function buildContext(s: Session, settings: Settings, instruction: string
   }
   const base = s.compaction?.throughIndex ?? 0;
   if (s.compaction) parts.push(`SUMMARY OF THE EARLIER SESSION (the events before the transcript below, condensed)\n${s.compaction.summary}`);
-  const opts = { audience: "agent" as const, jobs, markUndelivered: true, fileName: (fid: string) => getFile(fid)?.name };
+  const opts = { audience: "agent" as const, jobs, fileName: (fid: string) => getFile(fid)?.name };
+  const rendered = (from: number) =>
+    s.events
+      .slice(from)
+      .map((e) => renderEvent(e, opts))
+      .filter((x): x is string => !!x);
   let from = base;
-  let transcript = renderTranscript(s, { ...opts, fromIndex: from });
-  while (transcript.length > TRANSCRIPT_LIMIT && from < s.events.length - 10) {
+  let events = rendered(from);
+  while (events.join("\n\n").length > TRANSCRIPT_LIMIT && from < s.events.length - 10) {
     from += Math.ceil((s.events.length - from) / 10);
-    transcript = `[${from - base} earlier events omitted for length]\n\n` + renderTranscript(s, { ...opts, fromIndex: from });
+    events = [`[${from - base} earlier events omitted for length]`, ...rendered(from)];
   }
-  parts.push(`TRANSCRIPT${s.compaction ? " (continuing after the summary)" : ""}\n${transcript}`);
+  parts.push(`TRANSCRIPT${s.compaction ? " (continuing after the summary)" : ""}`);
+  // One block per event: the next call shares every block but the newest ones.
+  const head = parts.join(SEP) + "\n";
+  const transcript = events.map((t, i) => (i ? "\n\n" : "") + t).join(BLOCK);
+
+  const tail: string[] = [];
+  if (s.plan) {
+    const st = planStatus(s.events);
+    const title = (id: string) => s.plan!.nodes.find((n) => n.id === id)?.title ?? id;
+    tail.push(
+      `PLAN PROGRESS\nCurrent step: ${st.current ? `${st.current} (${title(st.current)})` : "none yet"}\nVisited: ${
+        s.plan.nodes.filter((n) => st.visited.has(n.id)).map((n) => n.id).join(", ") || "none"
+      }`,
+    );
+  }
+  const fresh = s.events.flatMap((e) => (e.type === "job_result" && !e.delivered ? [jobs.find((j) => j.id === e.jobId)] : [])).filter((j) => !!j);
+  if (fresh.length) tail.push(`NEW SINCE YOUR LAST TURN (in the transcript above): ${fresh.map((j) => `${j.kind} "${j.title}"`).join(", ")}`);
   const side = pendingSideNotes(s);
-  if (side) parts.push(side);
-  parts.push(`YOUR TASK NOW\n${instruction}`);
-  return parts.join("\n\n=====\n\n");
+  if (side) tail.push(side);
+  tail.push(`YOUR TASK NOW\n${instruction}`);
+  return `${head}${BLOCK}${transcript}${CACHE_POINT}${BLOCK}${SEP}${tail.join(SEP)}`;
 }
+
+const SEP = "\n\n=====\n\n";
 
 // ─── background jobs ────────────────────────────────────────────────────────
 

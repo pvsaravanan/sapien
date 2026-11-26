@@ -76,6 +76,30 @@ export function planStatus(events: SessionEvent[]): PlanStatus {
   return { current, visited };
 }
 
+export interface PlanVersion {
+  plan: Plan;
+  /** Index of the event that drew this map. */
+  start: number;
+  /** Index where the next map replaced it (events.length for the current one). */
+  end: number;
+}
+
+/** Every map the session has had, oldest first, with the event span it was live for. */
+export function planVersions(events: SessionEvent[]): PlanVersion[] {
+  const out: PlanVersion[] = [];
+  events.forEach((e, i) => {
+    if (e.type !== "plan") return;
+    if (out.length) out[out.length - 1].end = i;
+    out.push({ plan: e.plan, start: i, end: events.length });
+  });
+  return out;
+}
+
+/** Progress on a map as it stood when it was replaced (or now, for the current one). */
+export function versionStatus(events: SessionEvent[], v: PlanVersion): PlanStatus {
+  return planStatus(events.slice(0, v.end));
+}
+
 export interface LaidOutNode extends PlanNode {
   x: number;
   y: number;

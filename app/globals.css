@@ -58,7 +58,12 @@ body {
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Plus Jakarta Sans has a narrow space; open it up slightly so words don't run together. */
+  word-spacing: 0.08em;
 }
+/* Form fields don't inherit word spacing by default; code keeps true monospace spacing. */
+input, textarea, select, button { word-spacing: inherit; }
+code, pre, kbd, samp { word-spacing: normal; }
 ::selection { background: var(--blue); color: var(--bg); }
 
 .container-x { max-width: 1200px; margin-inline: auto; padding-inline: 32px; }
@@ -222,3 +227,31 @@ a.link:hover, .link:hover { border-bottom-color: var(--blue); }
 .answer-explain { border: 1px solid var(--rule-soft); border-left: 3px solid var(--blue); background: var(--surface); padding: 14px 18px; }
 .answer-explain table { margin: 0.6em 0; }
 .answer-explain ol, .answer-explain ul { margin: 0.4em 0; }
+
+/* Knowledge states card (components/states-card.tsx) */
+.states-lead { font-size: 0.8rem; line-height: 1.5; color: var(--ink-mute); }
+.states-group { margin-top: 14px; }
+.states-group-head { display: flex; align-items: center; gap: 8px; font-size: 0.64rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft); }
+.states-dot { width: 8px; height: 8px; border: 1.5px solid; flex-shrink: 0; }
+.states-count { margin-left: auto; color: var(--ink-mute); font-variant-numeric: tabular-nums; }
+.states-list { margin: 6px 0 0; padding: 0; list-style: none; }
+.states-list li { position: relative; padding: 3px 0 3px 14px; font-size: 0.84rem; line-height: 1.45; color: var(--ink); }
+.states-list li::before { content: ""; position: absolute; left: 0; top: 0.72em; width: 5px; height: 5px; background: var(--tone, var(--blue)); }
+.states-list li[data-check]::before { width: 7px; height: 7px; top: 0.62em; left: -1px; background: transparent; border: 1.5px solid var(--tone, var(--blue)); }
+.states-list .prose-lesson { font-size: inherit; line-height: inherit; }
+.states-list .prose-lesson code { font-size: 0.8em; }
+.states-evidence { margin-top: 2px; font-size: 0.76rem !important; line-height: 1.45 !important; color: var(--ink-mute); }
+.states-more { font-size: 0.64rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-mute); cursor: pointer; transition: color 150ms ease; }
+.states-more:hover { color: var(--blue); }
+
+/* Lesson map versions (components/session-view.tsx) */
+.map-versions { display: inline-flex; align-items: center; gap: 2px; font-size: 0.64rem; letter-spacing: 0.1em; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.map-versions span { padding: 0 6px; line-height: 22px; }
+.map-versions button { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--rule-soft); color: var(--blue); transition: border-color 150ms ease, background-color 150ms ease; }
+.map-versions button:hover:not(:disabled) { border-color: var(--blue); background: var(--blue-tint); }
+.map-versions button:disabled { color: var(--ink-mute); opacity: 0.4; cursor: default; }
+.map-past { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; padding: 8px 16px; border-bottom: 1px solid var(--rule-soft); background: rgba(212, 168, 61, 0.08); font-size: 0.72rem; color: var(--ink-soft); }
+.map-past button { font-size: 0.64rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--blue); }
+.map-past button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.divider-link { margin-left: 10px; letter-spacing: 0.1em; color: var(--ink-mute); text-transform: uppercase; transition: color 150ms ease; }
+.divider-link:hover { color: var(--blue); }
